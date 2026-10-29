@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import math
 import re
+import csv
 from datetime import date, datetime
 
 _DATE_RE = re.compile(r"\d{4}-\d{2}-\d{2}")
@@ -48,6 +49,55 @@ def parse_date_text(value):
     if parsed > date.today():
         return True, parsed  # 未来日期合法输入，标记在质量/有效性维度
     return True, parsed
+
+
+def read_csv_rows(stream, required, file_name):
+    """统一读取 CSV，保留行号并报告表头、列数与引号错误。
+
+    表头问题记在第 1 行，意味着整批记录无法可靠映射；行级问题只影响该行。
+    UTF-8 BOM 可同时出现在本地文件与工作台上传文本的开头。
+    """
+    rows, issues = [], []
+
+    def issue(line_no, column, problem, suggestion):
+        issues.append(dict(file=file_name, row=line_no, col=column,
+                           problem=problem, suggestion=suggestion, severity="structure"))
+
+    reader = csv.DictReader(stream, strict=True)
+    header = None
+    try:
+        header = reader.fieldnames
+        if not header:
+            issue(1, "header", "CSV 为空或缺少表头", "按模板填写表头与数据")
+            return rows, issues
+        header[0] = header[0].removeprefix("\ufeff")
+        if any(not name.strip() for name in header):
+            issue(1, "header", "CSV 表头存在空列名", "删除空列或填写唯一列名")
+        seen = set()
+        for name in header:
+            if name in seen:
+                issue(1, name, f"CSV 表头重复：{name}", "每个字段只保留一列")
+            seen.add(name)
+        missing = required - set(header)
+        if missing:
+            issue(1, "header", "CSV 缺少字段：" + "、".join(sorted(missing)),
+                  "补齐模板中的必填列")
+        for row in reader:
+            line_no = reader.line_num
+            if None in row:
+                issue(line_no, "row", "CSV 数据列数多于表头，可能含未加引号的逗号",
+                      "核对列数；含逗号的单元格使用双引号包裹")
+                row.pop(None)
+            if any(value is None for value in row.values()):
+                issue(line_no, "row", "CSV 数据列数少于表头",
+                      "补齐缺少的单元格；空值也需保留分隔逗号")
+            rows.append({"row_no": line_no, "data": row})
+    except csv.Error as exc:
+        line_no = max(reader.reader.line_num, 1) if header else 1
+        issue(line_no, "row", f"CSV 结构错误：{exc}", "核对双引号与分隔逗号后重新导入")
+        if header:
+            rows.append({"row_no": line_no, "data": {}})
+    return rows, issues
 
 
 def preflight_supply_rows(rows, file_name):

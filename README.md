@@ -58,7 +58,11 @@ python3 -m venv .venv
 
 ## 数据与验证
 
-默认提供虚构演示数据。实际 CSV 模板见 [templates/](templates/)，本地数据放入 `data/input/`，运行时使用 `--data-mode local`。
+默认提供虚构演示数据。实际 CSV 模板见 [templates/](templates/)；先新建 `data/input/`，将两份材料模板复制到该目录，替换示例行后使用 `--data-mode local`。
+需求文件包含多条记录时，添加 `--demand-id 你的需求编号`；编号不存在会报错，不会改选其他需求。
+`auto` 仅在两份本地 CSV 均不存在、且未指定需求编号时使用演示数据；文件不齐或有结构错误时停止并提示修正。
+CSV 使用 UTF-8 编码；列名不可重复，每行列数须与表头一致，含逗号的单元格应加双引号。工作台预览和正式导入使用相同校验。
+供给模板包含 `distance_km`、`price_includes_freight`、`yield_pct` 等字段，请按实际资料填写；示例值均为虚构。
 缺少价格、距离或因子时会标记待补证或不可计算，不用零代替。
 
 使用虚拟环境中的 Python 安装 `requirements-test.txt`，再运行 `scripts/check_project.py`，可执行全量测试和独立核验。

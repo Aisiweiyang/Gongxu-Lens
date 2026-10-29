@@ -25,7 +25,7 @@ def main(argv=None):
         "--data-mode",
         choices=["auto", "local", "demo", "online"],
         default="auto",
-        help="auto=本地 CSV 优先、无文件时演示；local=仅本地；demo=虚构演示；online=未实现",
+        help="auto=本地 CSV 优先、两份文件均不存在时演示；local=仅本地；demo=虚构演示；online=未实现",
     )
     parser.add_argument(
         "--demand-id",

@@ -587,11 +587,14 @@ def _make_handler(database):
                 return
             # 提交：整批先用正式导入同一套解析/校验（supply_from_payload，含千分位），
             # 全部通过后才在单个事务内写入；任意一行失败整体回滚。
-            import csv as _csv
             import io
+            from src.imports import SUPPLY_REQUIRED, read_csv_rows
             parsed_rows = []
             row_errors = []
-            for line_no, row in enumerate(_csv.DictReader(io.StringIO(csv_text)), 2):
+            rows, _ = read_csv_rows(io.StringIO(csv_text, newline=""),
+                                    SUPPLY_REQUIRED, "import.csv")
+            for item in rows:
+                line_no, row = item["row_no"], item["data"]
                 try:
                     supply = supply_from_payload(row)
                     parsed_rows.append(supply)

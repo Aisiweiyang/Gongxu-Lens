@@ -206,6 +206,7 @@ OPEN_SOURCE_FILES = ["LICENSE", "THIRD_PARTY_NOTICES.md", "README.en.md",
 DEMO_FILES += OPEN_SOURCE_FILES
 PILOT_FILES += OPEN_SOURCE_FILES + [
     "tests/test_static_server.py", "tests/test_public_release.py",
+    "tests/test_input_reliability.py",
     "scripts/check_project.py", "scripts/prepare_public_release.py",
     ".gitignore", ".gitattributes", ".github/workflows/ci.yml",
     "安装环境.bat", "启动演示网站.bat", "打开最新报告.bat", "CHANGELOG.md",

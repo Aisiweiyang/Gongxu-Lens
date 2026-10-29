@@ -55,7 +55,11 @@ For the pilot workbench, replace `serve.py` in the last command with `pilot/star
 
 ## Data and verification
 
-Built-in demo data is fictional. CSV templates are in [templates/](templates/); place local data under `data/input/` and use `--data-mode local`.
+Built-in demo data is fictional. Create `data/input/`, copy both material CSV files from [templates/](templates/), replace the example rows, and use `--data-mode local`.
+For multiple demand records, add `--demand-id YOUR_ID`. An unknown ID fails instead of selecting another demand.
+`auto` uses demo data only when both local files are absent and no demand ID is specified. Incomplete files or structural errors stop the run.
+Use UTF-8 CSV, unique column names, and the same number of cells as header columns; quote cells containing commas. Workbench previews and committed imports share these checks.
+The supply template includes `distance_km`, `price_includes_freight`, and `yield_pct`; fill them from verified inputs. All example values are fictional.
 Missing prices, distances, or factors are flagged rather than replaced with zero.
 
 Using the virtual environment's Python, install `requirements-test.txt` and run `scripts/check_project.py` for automated tests and independent verification.

@@ -27,7 +27,6 @@
 from __future__ import annotations
 
 import copy
-import csv
 import os
 import hashlib
 import json
@@ -43,7 +42,8 @@ from . import config
 from .ledger import (ALGORITHM_VERSION, baseline_cost, factor_data_has_ranges,
                      net_emissions_ledger, net_interval, project_cost_ledger)
 from .imports import (DEMAND_REQUIRED, SUPPLY_REQUIRED, format_issues,
-                      preflight_demand_rows, preflight_supply_rows, split_issues)
+                      preflight_demand_rows, preflight_supply_rows, read_csv_rows,
+                      split_issues)
 
 TOL = 1e-9
 # 支配比较容差：成本/净减排在 1e-6（绝对）内视为相等，超过容差的改进才算严格支配，
@@ -125,30 +125,26 @@ def _parse_bool(value):
 def load_supplies_csv(path, strict=True):
     """读取物料供给 CSV。结构错误（缺列/ID 缺失重复/非法数值）在 strict 下整体拒绝
     并附行级问题清单；业务待补证（缺报告/缺价）原样保留缺失，不静默修正。"""
-    required = SUPPLY_REQUIRED
     stats = {"read": 0, "accepted": 0, "rejected": 0, "warnings": [], "issues": []}
-    supplies, seen, rows = [], set(), []
+    supplies = []
     with open(path, encoding="utf-8-sig", newline="") as f:
-        reader = csv.DictReader(f)
-        missing = required - set(reader.fieldnames or [])
-        if missing:
-            raise ValueError("物料供给 CSV 缺少字段：" + "、".join(sorted(missing)))
-        for line_no, row in enumerate(reader, 2):
-            stats["read"] += 1
-            rows.append({"row_no": line_no, "data": row})
-    issues = preflight_supply_rows(rows, Path(path).name)
+        rows, issues = read_csv_rows(f, SUPPLY_REQUIRED, Path(path).name)
+    stats["read"] = len(rows)
+    issues += preflight_supply_rows(rows, Path(path).name)
     structural, business = split_issues(issues)
     stats["issues"] = issues
     stats["business_issues"] = business
     if strict and structural:
         raise ValueError("供给 CSV 存在结构错误，拒绝导入：\n" + format_issues(structural)
                          + f"\n共 {len(structural)} 项（业务待补证 {len(business)} 项未在此列出）")
+    rejected_rows = {i["row"] for i in structural}
+    stats["warnings"] = [format_issues([i]) for i in structural]
     for item in rows:
         line_no, row = item["row_no"], item["data"]
+        if 1 in rejected_rows or line_no in rejected_rows:
+            stats["rejected"] += 1
+            continue
         supply_id = _clean(row.get("supply_id"))
-        if not supply_id or supply_id in seen:
-            continue  # 结构错误已在体检中报告；strict 下根本走不到这里
-        seen.add(supply_id)
         numeric = _parse_numerics(row, ("mfi_g_10min", "moisture_pct", "ash_pct", "recycled_content_pct",
                                         "available_mass_t", "price_cny_per_t", "distance_km", "yield_pct"),
                                   line_no, stats)
@@ -193,30 +189,26 @@ def load_supplies_csv(path, strict=True):
 
 def load_demands_csv(path, strict=True):
     """读取物料需求 CSV。多条需求必须由调用方显式选择（run_material 的 demand_id 参数）。"""
-    required = DEMAND_REQUIRED
     stats = {"read": 0, "accepted": 0, "rejected": 0, "warnings": [], "issues": []}
-    demands, seen, rows = [], set(), []
+    demands = []
     with open(path, encoding="utf-8-sig", newline="") as f:
-        reader = csv.DictReader(f)
-        missing = required - set(reader.fieldnames or [])
-        if missing:
-            raise ValueError("物料需求 CSV 缺少字段：" + "、".join(sorted(missing)))
-        for line_no, row in enumerate(reader, 2):
-            stats["read"] += 1
-            rows.append({"row_no": line_no, "data": row})
-    issues = preflight_demand_rows(rows, Path(path).name)
+        rows, issues = read_csv_rows(f, DEMAND_REQUIRED, Path(path).name)
+    stats["read"] = len(rows)
+    issues += preflight_demand_rows(rows, Path(path).name)
     structural, business = split_issues(issues)
     stats["issues"] = issues
     stats["business_issues"] = business
     if strict and structural:
         raise ValueError("需求 CSV 存在结构错误，拒绝导入：\n" + format_issues(structural)
                          + f"\n共 {len(structural)} 项（业务待补证 {len(business)} 项未在此列出）")
+    rejected_rows = {i["row"] for i in structural}
+    stats["warnings"] = [format_issues([i]) for i in structural]
     for item in rows:
         line_no, row = item["row_no"], item["data"]
-        demand_id = _clean(row.get("demand_id"))
-        if not demand_id or demand_id in seen:
+        if 1 in rejected_rows or line_no in rejected_rows:
+            stats["rejected"] += 1
             continue
-        seen.add(demand_id)
+        demand_id = _clean(row.get("demand_id"))
         numeric = _parse_numerics(
             row, ("required_mass_t", "min_recycled_content_pct", "mfi_min", "mfi_max",
                   "max_moisture_pct", "max_ash_pct", "baseline_virgin_price_cny_per_t",
@@ -1935,6 +1927,8 @@ def run_material(data_mode="auto", demand_id=None):
 
     多条需求必须显式选择（demand_id）或逐项建任务，禁止静默取第一条（）。
     """
+    if data_mode not in ("auto", "local", "demo", "online"):
+        raise ValueError(f"未知数据模式：{data_mode}（应为 auto、local、demo 或 online）")
     if data_mode == "online":
         raise ValueError("online 模式未实现：当前不接入在线数据源，请使用 demo 或 local")
     if data_mode == "local":
@@ -1950,8 +1944,13 @@ def run_material(data_mode="auto", demand_id=None):
                 "需求 CSV 包含多条需求，必须显式指定："
                 + "、".join(d.demand_id for d in demands)
                 + "。请用 --demand-id 选择，或逐条需求建任务（当前不支持联合优化）。")
-        demand = next((d for d in demands if d.demand_id == demand_id), demands[0]) \
-            if demand_id else demands[0]
+        if demand_id is not None:
+            demand = next((d for d in demands if d.demand_id == demand_id), None)
+            if demand is None:
+                raise ValueError(f"未找到需求 {demand_id!r}；可选 demand_id："
+                                 + "、".join(d.demand_id for d in demands))
+        else:
+            demand = demands[0]
         if len(demands) > 1:
             mode_note = f"数据模式：本地 CSV（需求 {demand.demand_id}，其余 {len(demands) - 1} 条未纳入本任务）"
         else:
@@ -1960,12 +1959,10 @@ def run_material(data_mode="auto", demand_id=None):
         resolved_mode = "local"
         fallback_reason = ""
     elif data_mode == "auto":
-        if config.MATERIAL_SUPPLY_CSV.exists() and config.MATERIAL_DEMAND_CSV.exists():
-            resolved_mode, fallback_reason = "local", ""
-        else:
-            resolved_mode, fallback_reason = "demo", "本地 CSV 缺失，回退演示数据"
-        if resolved_mode == "local":
+        if (config.MATERIAL_SUPPLY_CSV.exists() or config.MATERIAL_DEMAND_CSV.exists()
+                or demand_id is not None):
             return run_material("local", demand_id=demand_id)
+        resolved_mode, fallback_reason = "demo", "本地 CSV 缺失，回退演示数据"
         demand = demo_demand()
         supplies = demo_supplies()
         mode_note = "数据模式：演示数据（虚构供给与需求，不得用于真实决策）"
@@ -1976,6 +1973,8 @@ def run_material(data_mode="auto", demand_id=None):
         mode_note = "数据模式：演示数据（虚构供给与需求，不得用于真实决策）"
         load_stats = None
         resolved_mode, fallback_reason = "demo", ""
+    if demand_id is not None and demand.demand_id != demand_id:
+        raise ValueError(f"未找到需求 {demand_id!r}；演示需求为 {demand.demand_id}")
     factor_data = load_material_factors()
     return _build_result(demand, supplies, factor_data, data_mode, resolved_mode,
                          fallback_reason, mode_note, load_stats)

@@ -10,7 +10,8 @@ from __future__ import annotations
 import json
 from dataclasses import asdict, is_dataclass
 
-from src.imports import preflight_demand_rows, preflight_supply_rows, split_issues
+from src.imports import (DEMAND_REQUIRED, SUPPLY_REQUIRED, preflight_demand_rows,
+                         preflight_supply_rows, read_csv_rows, split_issues)
 from src.material import MaterialDemand, MaterialSupply, analyze_task, load_material_factors
 
 DEMAND_FIELDS = {
@@ -95,19 +96,16 @@ def preflight_import(task_demand_payload, csv_text, kind):
 
     预检与正式导入共用同一套解析与领域校验（src.imports → src.validation）。
     """
-    import csv as _csv
     import io
 
-    rows = []
-    reader = _csv.DictReader(io.StringIO(csv_text))
-    if not reader.fieldnames:
-        raise ValueError("CSV 为空或缺少表头")
-    for line_no, row in enumerate(reader, 2):
-        rows.append({"row_no": line_no, "data": row})
+    if kind not in ("supply", "demand"):
+        raise ValueError(f"未知导入类型：{kind}")
+    required = SUPPLY_REQUIRED if kind == "supply" else DEMAND_REQUIRED
+    rows, issues = read_csv_rows(io.StringIO(csv_text, newline=""), required, "import.csv")
     if kind == "supply":
-        issues = preflight_supply_rows(rows, "import.csv")
+        issues += preflight_supply_rows(rows, "import.csv")
     else:
-        issues = preflight_demand_rows(rows, "import.csv")
+        issues += preflight_demand_rows(rows, "import.csv")
     structural, business = split_issues(issues)
     return {"issues": issues, "structural": structural, "business": business,
             "preview_count": len(rows)}
