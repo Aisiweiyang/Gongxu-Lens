@@ -1,4 +1,6 @@
-# 供需透镜 · v0
+# Gongxu-Lens · 供需透镜 v0
+
+**作者与维护者：[Aisiweiyang](https://github.com/Aisiweiyang)**
 
 一个探索再生材料供需匹配、采购组合与净减排核算的开源项目。
 

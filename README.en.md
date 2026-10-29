@@ -1,5 +1,7 @@
 # SupplyLens (供需透镜) · v0
 
+**Author and maintainer: [Aisiweiyang](https://github.com/Aisiweiyang)**
+
 An open-source project exploring recycled-material matching, procurement plans, and scenario-based net emission accounting.
 
 **This is v0, the initial public version. Updates and maintenance will happen from time to time as features, documentation, and usability improve.**
